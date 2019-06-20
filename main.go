@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -31,6 +32,7 @@ func main() {
 	flag.BoolVar(&r.Dry, "dry", false, "dry run")
 	flag.BoolVar(&r.Shell, "shell", false, "shell")
 	flag.BoolVar(&r.Shuffle, "shuffle", false, "shuffle")
+	flag.BoolVar(&r.KeepEmpty, "keep-empty", false, "keep empty line")
 	flag.Parse()
 
 	if err := r.Run(flag.Args()); err != nil {
@@ -152,16 +154,17 @@ const defaultShell = "/bin/sh"
 var dummy = struct{}{}
 
 type Runner struct {
-	Delay   time.Duration
-	Timeout time.Duration
-	Repeat  int
-	Retries int
-	Jobs    int
-	Env     bool
-	Quiet   bool
-	Dry     bool
-	Shell   bool
-	Shuffle bool
+	Delay     time.Duration
+	Timeout   time.Duration
+	Repeat    int
+	Retries   int
+	Jobs      int
+	Env       bool
+	Quiet     bool
+	Dry       bool
+	Shell     bool
+	Shuffle   bool
+	KeepEmpty bool
 
 	cmd  string
 	args []Arg
@@ -176,14 +179,27 @@ func (r Runner) Run(args []string) error {
 	if n, as, err := parseArgs(args[1:]); err != nil {
 		return err
 	} else {
-		r.args, args = as, args[n:]
+		r.args, args = as, args[1+n:]
+
+		if len(args) == 0 {
+			s := bufio.NewScanner(os.Stdin)
+			for s.Scan() {
+				text := s.Text()
+				if !r.KeepEmpty && len(text) == 0 {
+					continue
+				}
+				args = append(args, text)
+			}
+			if err := s.Err(); err != nil || len(args) == 0 {
+				return err
+			}
+		}
 	}
 	if r.Shuffle {
 		r.cb = Shuffle(args)
 	} else {
 		r.cb = Combine(args)
 	}
-	defer r.cb.Reset()
 
 	stdout, stderr := r.CombinedOutput()
 	if r.Jobs <= 0 {
@@ -204,6 +220,8 @@ func (r Runner) Run(args []string) error {
 }
 
 func (r Runner) run(stdout, stderr io.Writer) error {
+	defer r.cb.Reset()
+
 	var (
 		group errgroup.Group
 		sema  = make(chan struct{}, r.Jobs)
