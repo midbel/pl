@@ -171,24 +171,12 @@ type Runner struct {
 	src  Source
 }
 
-func (r Runner) Run(args []string) error {
+func (r *Runner) Run(args []string) error {
 	if len(args) == 0 {
 		return nil
 	}
-	r.cmd = args[0]
-	if n, as, err := parseArgs(args[1:]); err != nil {
+	if err := r.setupArgs(args); err != nil {
 		return err
-	} else {
-		r.args, args = as, args[1+n:]
-	}
-	if len(args) > 0 {
-		if r.Shuffle {
-			r.src = Shuffle(args)
-		} else {
-			r.src = Combine(args)
-		}
-	} else {
-		r.src = Stdin(r.KeepEmpty)
 	}
 
 	stdout, stderr := r.CombinedOutput()
@@ -198,15 +186,15 @@ func (r Runner) Run(args []string) error {
 	if r.Retries <= 0 {
 		r.Retries = 1
 	}
-	if r.Repeat <= 0 {
+	if r.Repeat <= 0 || r.Dry {
 		r.Repeat = 1
 	}
 	for i := 0; i < r.Repeat; i++ {
 		if err := r.run(stdout, stderr); err != nil {
 			return err
 		}
-		if r, ok := r.src.(*Combination); ok {
-			r.Reset()
+		if c, ok := r.src.(*Combination); ok && !r.Dry {
+			c.Reset()
 		} else {
 			break
 		}
@@ -214,7 +202,7 @@ func (r Runner) Run(args []string) error {
 	return nil
 }
 
-func (r Runner) run(stdout, stderr io.Writer) error {
+func (r *Runner) run(stdout, stderr io.Writer) error {
 	var (
 		group errgroup.Group
 		sema  = make(chan struct{}, r.Jobs)
@@ -247,7 +235,7 @@ func (r Runner) run(stdout, stderr io.Writer) error {
 	return group.Wait()
 }
 
-func (r Runner) CombinedOutput() (io.Writer, io.Writer) {
+func (r *Runner) CombinedOutput() (io.Writer, io.Writer) {
 	var stderr, stdout io.Writer
 	if !r.Quiet {
 		outr, outw := io.Pipe()
@@ -263,7 +251,7 @@ func (r Runner) CombinedOutput() (io.Writer, io.Writer) {
 	return stdout, stderr
 }
 
-func (r Runner) PrepareCommand(vs []string) *exec.Cmd {
+func (r *Runner) PrepareCommand(vs []string) *exec.Cmd {
 	var (
 		xs []string
 		ph int
@@ -291,6 +279,25 @@ func (r Runner) PrepareCommand(vs []string) *exec.Cmd {
 		c.Env = append(c.Env, os.Environ()...)
 	}
 	return c
+}
+
+func (r *Runner) setupArgs(args []string) error {
+	r.cmd = args[0]
+	if n, as, err := parseArgs(args[1:]); err != nil {
+		return err
+	} else {
+		r.args, args = as, args[1+n:]
+	}
+	if len(args) > 0 {
+		if r.Shuffle {
+			r.src = Shuffle(args)
+		} else {
+			r.src = Combine(args)
+		}
+	} else {
+		r.src = Stdin(r.KeepEmpty)
+	}
+	return nil
 }
 
 func shellCommand(name string, args []string) *exec.Cmd {
