@@ -168,7 +168,7 @@ type Runner struct {
 
 	cmd  string
 	args []Arg
-	cb   *Combination
+	src  Source
 }
 
 func (r Runner) Run(args []string) error {
@@ -180,25 +180,15 @@ func (r Runner) Run(args []string) error {
 		return err
 	} else {
 		r.args, args = as, args[1+n:]
-
-		if len(args) == 0 {
-			s := bufio.NewScanner(os.Stdin)
-			for s.Scan() {
-				text := s.Text()
-				if !r.KeepEmpty && len(text) == 0 {
-					continue
-				}
-				args = append(args, text)
-			}
-			if err := s.Err(); err != nil || len(args) == 0 {
-				return err
-			}
-		}
 	}
-	if r.Shuffle {
-		r.cb = Shuffle(args)
+	if len(args) > 0 {
+		if r.Shuffle {
+			r.src = Shuffle(args)
+		} else {
+			r.src = Combine(args)
+		}
 	} else {
-		r.cb = Combine(args)
+		r.src = Stdin(r.KeepEmpty)
 	}
 
 	stdout, stderr := r.CombinedOutput()
@@ -215,18 +205,21 @@ func (r Runner) Run(args []string) error {
 		if err := r.run(stdout, stderr); err != nil {
 			return err
 		}
+		if r, ok := r.src.(*Combination); ok {
+			r.Reset()
+		} else {
+			break
+		}
 	}
 	return nil
 }
 
 func (r Runner) run(stdout, stderr io.Writer) error {
-	defer r.cb.Reset()
-
 	var (
 		group errgroup.Group
 		sema  = make(chan struct{}, r.Jobs)
 	)
-	for vs := r.cb.Next(); vs != nil; vs = r.cb.Next() {
+	for vs := r.src.Next(); vs != nil; vs = r.src.Next() {
 		c := r.PrepareCommand(vs)
 		if r.Dry {
 			fmt.Printf("%s %s\n", c.Args[0], strings.Join(c.Args[1:], " "))
@@ -318,26 +311,57 @@ const (
 	linkArg = ":::+"
 )
 
+type Source interface {
+	Next() []string
+}
+
+type stdin struct {
+	scan  *bufio.Scanner
+	empty bool
+}
+
+func Stdin(empty bool) Source {
+	s := bufio.NewScanner(os.Stdin)
+	return &stdin{scan: s, empty: empty}
+}
+
+func (s *stdin) Next() []string {
+	if err := s.scan.Err(); err != nil || !s.scan.Scan() {
+		return nil
+	}
+	var vs []string
+
+	str := s.scan.Text()
+	if !s.empty && len(str) == 0 {
+		return s.Next()
+	}
+	return append(vs, str)
+}
+
 type Combination struct {
 	data  [][]string
 	combi []int
 	size  int
 }
 
-func Combine(as []string) *Combination {
-	c := Combination{data: joinArgs(as)}
-	c.Reset()
-	return &c
+func Combine(as []string) Source {
+	return combineAndShuffle(as, false)
 }
 
-func Shuffle(as []string) *Combination {
+func Shuffle(as []string) Source {
+	return combineAndShuffle(as, true)
+}
+
+func combineAndShuffle(as []string, shuffle bool) *Combination {
 	args := joinArgs(as)
-	for i := range args {
-		typ, xs := args[i][0], args[i][1:]
-		rand.Shuffle(len(xs), func(i, j int) {
-			xs[i], xs[j] = xs[j], xs[i]
-		})
-		args[i] = append([]string{typ}, xs...)
+	if shuffle {
+		for i := range args {
+			typ, xs := args[i][0], args[i][1:]
+			rand.Shuffle(len(xs), func(i, j int) {
+				xs[i], xs[j] = xs[j], xs[i]
+			})
+			args[i] = append([]string{typ}, xs...)
+		}
 	}
 	c := Combination{data: args}
 	c.Reset()
