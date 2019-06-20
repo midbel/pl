@@ -54,7 +54,7 @@ func (a Arg) Replace(vs []string) string {
 	if a.Index < 0 {
 		a.Index = int64(len(vs)) + a.Index
 	}
-	if i := a.Index-1; i >= int64(len(vs)) {
+	if i := a.Index - 1; i >= int64(len(vs)) {
 		return ""
 	}
 	v := vs[a.Index-1]
@@ -195,7 +195,10 @@ func (r Runner) Run(args []string) error {
 	if r.Repeat <= 0 {
 		r.Repeat = 1
 	}
+	return r.run(stdout, stderr)
+}
 
+func (r Runner) run(stdout, stderr io.Writer) error {
 	var (
 		group errgroup.Group
 		sema  = make(chan struct{}, r.Jobs)
