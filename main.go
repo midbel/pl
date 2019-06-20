@@ -195,7 +195,12 @@ func (r Runner) Run(args []string) error {
 	if r.Repeat <= 0 {
 		r.Repeat = 1
 	}
-	return r.run(stdout, stderr)
+	for i := 0; i < r.Repeat; i++ {
+		if err := r.run(stdout, stderr); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r Runner) run(stdout, stderr io.Writer) error {
