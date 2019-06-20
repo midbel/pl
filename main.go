@@ -54,7 +54,7 @@ func (a Arg) Replace(vs []string) string {
 	if a.Index < 0 {
 		a.Index = int64(len(vs)) + a.Index
 	}
-	if a.Index >= int64(len(vs)) {
+	if i := a.Index-1; i >= int64(len(vs)) {
 		return ""
 	}
 	v := vs[a.Index-1]
