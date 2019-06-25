@@ -53,7 +53,11 @@ func TestBuilderDump(t *testing.T) {
 	}
 	for i, d := range data {
 		b := Build(splitCommand(d.Cmd))
-		if str := b.Dump(d.Args); str != d.Want {
+		str, err := b.Dump(d.Args)
+		if err != nil {
+			t.Errorf("%d) unexpected error (%s): %s", i+1, d.Want, err)
+		}
+		if str != d.Want {
 			t.Errorf("%d) want: %s, got: %s", i+1, d.Want, str)
 		}
 	}
