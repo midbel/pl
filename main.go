@@ -46,8 +46,8 @@ var ErrIndex = errors.New("no index")
 type Builder struct {
 	args []Fragment
 
-	cmd  string
-	env  []string
+	cmd string
+	env []string
 }
 
 func Build(args []string) *Builder {
