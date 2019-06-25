@@ -43,6 +43,168 @@ func main() {
 
 var ErrIndex = errors.New("no index")
 
+type Builder struct {
+	args []Fragment
+
+	cmd  string
+	env  []string
+}
+
+func Build(args []string) *Builder {
+	b := Builder{
+		cmd: args[0],
+		env: os.Environ(),
+	}
+	var no int
+	for _, a := range args[1:] {
+		f, i := parseFragment(a, no)
+		b.args, no = append(b.args, f), no+i
+	}
+	return &b
+}
+
+func (b Builder) Dump(xs []string) string {
+	as := b.prepareArguments(xs)
+	return fmt.Sprintf("%s %s", b.cmd, strings.Join(as, " "))
+}
+
+func (b Builder) Build(xs []string, env, shell bool) *exec.Cmd {
+	as := b.prepareArguments(xs)
+	var cmd *exec.Cmd
+	if shell {
+		cmd = shellCommand(b.cmd, as)
+	} else {
+		cmd = subCommand(b.cmd, as)
+	}
+	if env && len(b.env) > 0 {
+		cmd.Env = append(cmd.Env, b.env...)
+	}
+	return cmd
+}
+
+func (b Builder) prepareArguments(xs []string) []string {
+	var (
+		rp int
+		as []string
+	)
+	for _, a := range b.args {
+		n, s := a.Replace(xs)
+
+		rp += n
+		as = append(as, s)
+	}
+	if rp == 0 {
+		as = append(as, xs...)
+	}
+	return as
+}
+
+type Fragment struct {
+	args    []Arg
+	builder strings.Builder
+}
+
+func parseFragment(str string, no int) (Fragment, int) {
+	const (
+		lcurly = '{'
+		rcurly = '}'
+	)
+
+	skipN := func(str string, char byte) int {
+		var i int
+		for i < len(str) && str[i] == char {
+			i++
+		}
+		return i
+	}
+	var (
+		i int
+		j int
+		f Fragment
+	)
+	for i < len(str) {
+		if str[i] == lcurly {
+			i++
+			i += skipN(str[i:], str[i-1])
+			f.appendLiteral(str[j : i-1])
+			j = i
+			for i < len(str) {
+				if str[i] == rcurly {
+					err := f.appendPlaceholder(str[j:i], no+1)
+					if err == ErrIndex {
+						no++
+					}
+					j = i + 1
+					break
+				}
+				i++
+			}
+		}
+		i++
+	}
+	if j >= 0 && j < len(str) {
+		f.appendLiteral(str[j:])
+	}
+	return f, no
+}
+
+func (f *Fragment) String() string {
+	var b strings.Builder
+	for _, a := range f.args {
+		if a.IsLiteral() {
+			b.WriteString(a.Literal)
+		} else {
+			fmt.Fprintf(&b, "{%d}", a.Index)
+		}
+	}
+	return b.String()
+}
+
+func (f *Fragment) appendLiteral(str string) {
+	if len(str) > 0 {
+		f.args = append(f.args, literal(str))
+	}
+}
+
+func (f *Fragment) appendPlaceholder(str string, no int) error {
+	var (
+		arg Arg
+		err error
+	)
+	if len(str) == 0 {
+		err = ErrIndex
+	} else {
+		arg, err = parsePlaceholder(str)
+		if err == nil && arg.Index == 0 {
+			err = ErrIndex
+		}
+	}
+	if arg.Index == 0 {
+		arg.Index = int64(no)
+	}
+	if err == nil || err == ErrIndex {
+		f.args = append(f.args, arg)
+	}
+	return err
+}
+
+func (f Fragment) Replace(xs []string) (int, string) {
+	defer f.builder.Reset()
+
+	var rp int
+	for _, a := range f.args {
+		if !a.IsLiteral() {
+			rp++
+		}
+		str := a.Replace(xs)
+		if str == "" {
+			continue
+		}
+		f.builder.WriteString(str)
+	}
+	return rp, f.builder.String()
+}
+
 type Arg struct {
 	Literal   string
 	Index     int64
@@ -55,11 +217,13 @@ func (a Arg) Replace(vs []string) string {
 	}
 	if a.Index < 0 {
 		a.Index = int64(len(vs)) + a.Index
+	} else {
+		a.Index--
 	}
-	if i := a.Index - 1; i >= int64(len(vs)) {
+	if a.Index >= int64(len(vs)) {
 		return ""
 	}
-	v := vs[a.Index-1]
+	v := vs[a.Index]
 	if a.Transform != nil {
 		v = a.Transform(v)
 	}
@@ -70,37 +234,10 @@ func (a Arg) IsLiteral() bool {
 	return len(a.Literal) > 0
 }
 
-func parseArgs(args []string) (int, []Arg, error) {
-	var (
-		as []Arg
-		no int
-		ph int
-	)
-	for _, a := range args {
-		ph++
-		if a == combArg || a == linkArg {
-			break
-		}
-		if !isPlaceholder(a) {
-			as = append(as, literal(a))
-		} else {
-			x, err := parsePlaceholder(a)
-			switch err {
-			case nil:
-			case ErrIndex:
-				x.Index = int64(no) + 1
-				no++
-			default:
-				return -1, nil, err
-			}
-			as = append(as, x)
-		}
-	}
-	return ph, as, nil
-}
-
 func parsePlaceholder(str string) (a Arg, err error) {
-	str = str[1 : len(str)-1]
+	if isPlaceholder(str) {
+		str = str[1 : len(str)-1]
+	}
 	if len(str) == 0 {
 		err = ErrIndex
 	} else {
@@ -110,7 +247,7 @@ func parsePlaceholder(str string) (a Arg, err error) {
 		)
 		ix := strings.Index(str, ":")
 		if ix == 0 {
-			cmd, err = str, ErrIndex // only command given
+			cmd, err = str[1:], ErrIndex // only command given
 		} else if ix < 0 {
 			idx = str // no command given, only an index
 		} else {
@@ -166,9 +303,8 @@ type Runner struct {
 	Shuffle   bool
 	KeepEmpty bool
 
-	cmd  string
-	args []Arg
-	src  Source
+	builder *Builder
+	source  Source
 }
 
 func (r *Runner) Run(args []string) error {
@@ -177,6 +313,9 @@ func (r *Runner) Run(args []string) error {
 	}
 	if err := r.setupArgs(args); err != nil {
 		return err
+	}
+	if r.Dry {
+		return r.runDry()
 	}
 
 	stdout, stderr := r.CombinedOutput()
@@ -193,11 +332,18 @@ func (r *Runner) Run(args []string) error {
 		if err := r.run(stdout, stderr); err != nil {
 			return err
 		}
-		if c, ok := r.src.(*Combination); ok && !r.Dry {
+		if c, ok := r.source.(*Combination); ok && !r.Dry {
 			c.Reset()
 		} else {
 			break
 		}
+	}
+	return nil
+}
+
+func (r *Runner) runDry() error {
+	for vs := r.source.Next(); vs != nil; vs = r.source.Next() {
+		fmt.Println(r.builder.Dump(vs))
 	}
 	return nil
 }
@@ -207,12 +353,8 @@ func (r *Runner) run(stdout, stderr io.Writer) error {
 		group errgroup.Group
 		sema  = make(chan struct{}, r.Jobs)
 	)
-	for vs := r.src.Next(); vs != nil; vs = r.src.Next() {
-		c := r.PrepareCommand(vs)
-		if r.Dry {
-			fmt.Printf("%s %s\n", c.Args[0], strings.Join(c.Args[1:], " "))
-			continue
-		}
+	for vs := r.source.Next(); vs != nil; vs = r.source.Next() {
+		c := r.builder.Build(vs, r.Env, r.Shell)
 		if r.Delay > 0 {
 			time.Sleep(r.Delay)
 		}
@@ -251,53 +393,28 @@ func (r *Runner) CombinedOutput() (io.Writer, io.Writer) {
 	return stdout, stderr
 }
 
-func (r *Runner) PrepareCommand(vs []string) *exec.Cmd {
-	var (
-		xs []string
-		ph int
-	)
-	for _, a := range r.args {
-		if !a.IsLiteral() {
-			ph++
-		}
-		xs = append(xs, a.Replace(vs))
-		if i := len(xs) - 1; xs[i] == "" {
-			xs = xs[:i]
-		}
-	}
-	if ph == 0 {
-		xs = append(xs, vs...)
-	}
-
-	var c *exec.Cmd
-	if r.Shell {
-		c = shellCommand(r.cmd, xs)
-	} else {
-		c = subCommand(r.cmd, xs)
-	}
-	if r.Env {
-		c.Env = append(c.Env, os.Environ()...)
-	}
-	return c
-}
-
 func (r *Runner) setupArgs(args []string) error {
-	r.cmd = args[0]
-	if n, as, err := parseArgs(args[1:]); err != nil {
-		return err
-	} else {
-		r.args, args = as, args[1+n:]
-	}
+	parts, args := splitArgs(args)
+	r.builder = Build(parts)
 	if len(args) > 0 {
 		if r.Shuffle {
-			r.src = Shuffle(args)
+			r.source = Shuffle(args)
 		} else {
-			r.src = Combine(args)
+			r.source = Combine(args)
 		}
 	} else {
-		r.src = Stdin(r.KeepEmpty)
+		r.source = Stdin(r.KeepEmpty)
 	}
 	return nil
+}
+
+func splitArgs(args []string) ([]string, []string) {
+	for i := 0; i < len(args); i++ {
+		if a := args[i]; a == combArg || a == linkArg {
+			return args[:i], args[i:]
+		}
+	}
+	return args, nil
 }
 
 func shellCommand(name string, args []string) *exec.Cmd {
