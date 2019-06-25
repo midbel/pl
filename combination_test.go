@@ -43,6 +43,34 @@ func TestCombinationNext(t *testing.T) {
 				{"c", "3", "Y", "22"},
 			},
 		},
+		{
+			Input: "A B C :::+ G H I ::: D E F",
+			Want: [][]string{
+				{"A", "G", "D"},
+				{"A", "G", "E"},
+				{"A", "G", "F"},
+				{"B", "H", "D"},
+				{"B", "H", "E"},
+				{"B", "H", "F"},
+				{"C", "I", "D"},
+				{"C", "I", "E"},
+				{"C", "I", "F"},
+			},
+		},
+		{
+			Input: "A B C ::: G H I :::+ D E F",
+			Want: [][]string{
+				{"A", "G", "D"},
+				{"A", "H", "E"},
+				{"A", "I", "F"},
+				{"B", "G", "D"},
+				{"B", "H", "E"},
+				{"B", "I", "F"},
+				{"C", "G", "D"},
+				{"C", "H", "E"},
+				{"C", "I", "F"},
+			},
+		},
 	}
 	for i, d := range data {
 		args := strings.Split(d.Input, " ")
