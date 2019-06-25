@@ -297,20 +297,20 @@ func parsePlaceholder(str string) (a Arg, err error) {
 				})
 				return string(bs)
 			}
-		case "uuid4":
-			a.Transform = func(_ string) string {
-				u := uuid.UUID4()
-				return u.String()
-			}
-		case "uuid5-url":
+		case "uuid+url", "uuid+dns":
 			a.Transform = func(v string) string {
-				u := uuid.UUID5([]byte(v), uuid.URL)
-				return u.String()
-			}
-		case "uuid5-dns":
-			a.Transform = func(v string) string {
-				u := uuid.UUID5([]byte(v), uuid.DNS)
-				return u.String()
+				var ns uuid.UUID
+				switch {
+				case strings.HasSuffix(cmd, "rand"):
+					return uuid.UUID4().String()
+				case strings.HasSuffix(cmd, "url"):
+					ns = uuid.URL
+				case strings.HasSuffix(cmd, "dns"):
+					ns = uuid.DNS
+				default:
+					return uuid.Nil.String()
+				}
+				return uuid.UUID5([]byte(v), ns).String()
 			}
 		}
 	}
