@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/midbel/uuid"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -295,6 +296,21 @@ func parsePlaceholder(str string) (a Arg, err error) {
 					bs[i], bs[j] = bs[j], bs[i]
 				})
 				return string(bs)
+			}
+		case "uuid4":
+			a.Transform = func(_ string) string {
+				u := uuid.UUID4()
+				return u.String()
+			}
+		case "uuid5-url":
+			a.Transform = func(v string) string {
+				u := uuid.UUID5([]byte(v), uuid.URL)
+				return u.String()
+			}
+		case "uuid5-dns":
+			a.Transform = func(v string) string {
+				u := uuid.UUID5([]byte(v), uuid.DNS)
+				return u.String()
 			}
 		}
 	}
