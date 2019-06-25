@@ -288,6 +288,14 @@ func parsePlaceholder(str string) (a Arg, err error) {
 			a.Transform = func(v string) string { return filepath.Base(v) }
 		case "ext":
 			a.Transform = func(v string) string { return filepath.Ext(v) }
+		case "random":
+			a.Transform = func(v string) string {
+				bs := []byte(v)
+				rand.Shuffle(len(bs), func(i, j int) {
+					bs[i], bs[j] = bs[j], bs[i]
+				})
+				return string(bs)
+			}
 		}
 	}
 	return
