@@ -41,7 +41,10 @@ func main() {
 	}
 }
 
-var ErrIndex = errors.New("no index")
+var (
+	ErrIndex = errors.New("no index")
+	ErrRange = errors.New("out of range")
+)
 
 type Builder struct {
 	args []Fragment
@@ -63,13 +66,19 @@ func Build(args []string) *Builder {
 	return &b
 }
 
-func (b Builder) Dump(xs []string) string {
-	as := b.prepareArguments(xs)
-	return fmt.Sprintf("%s %s", b.cmd, strings.Join(as, " "))
+func (b Builder) Dump(xs []string) (string, error) {
+	as, err := b.prepareArguments(xs)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s %s", b.cmd, strings.Join(as, " ")), nil
 }
 
-func (b Builder) Build(xs []string, env, shell bool) *exec.Cmd {
-	as := b.prepareArguments(xs)
+func (b Builder) Build(xs []string, env, shell bool) (*exec.Cmd, error) {
+	as, err := b.prepareArguments(xs)
+	if err != nil {
+		return nil, err
+	}
 	var cmd *exec.Cmd
 	if shell {
 		cmd = shellCommand(b.cmd, as)
@@ -79,16 +88,19 @@ func (b Builder) Build(xs []string, env, shell bool) *exec.Cmd {
 	if env && len(b.env) > 0 {
 		cmd.Env = append(cmd.Env, b.env...)
 	}
-	return cmd
+	return cmd, nil
 }
 
-func (b Builder) prepareArguments(xs []string) []string {
+func (b Builder) prepareArguments(xs []string) ([]string, error) {
 	var (
 		rp int
 		as []string
 	)
 	for _, a := range b.args {
-		n, s := a.Replace(xs)
+		n, s, err := a.Replace(xs)
+		if err != nil {
+			return nil, err
+		}
 
 		rp += n
 		as = append(as, s)
@@ -96,7 +108,7 @@ func (b Builder) prepareArguments(xs []string) []string {
 	if rp == 0 {
 		as = append(as, xs...)
 	}
-	return as
+	return as, nil
 }
 
 type Fragment struct {
@@ -188,7 +200,7 @@ func (f *Fragment) appendPlaceholder(str string, no int) error {
 	return err
 }
 
-func (f Fragment) Replace(xs []string) (int, string) {
+func (f Fragment) Replace(xs []string) (int, string, error) {
 	defer f.builder.Reset()
 
 	var rp int
@@ -196,13 +208,16 @@ func (f Fragment) Replace(xs []string) (int, string) {
 		if !a.IsLiteral() {
 			rp++
 		}
-		str := a.Replace(xs)
+		str, err := a.Replace(xs)
+		if err != nil {
+			return -1, "", err
+		}
 		if str == "" {
 			continue
 		}
 		f.builder.WriteString(str)
 	}
-	return rp, f.builder.String()
+	return rp, f.builder.String(), nil
 }
 
 type Arg struct {
@@ -211,23 +226,23 @@ type Arg struct {
 	Transform func(string) string
 }
 
-func (a Arg) Replace(vs []string) string {
+func (a Arg) Replace(vs []string) (string, error) {
 	if a.IsLiteral() {
-		return a.Literal
+		return a.Literal, nil
 	}
 	if a.Index < 0 {
 		a.Index = int64(len(vs)) + a.Index
 	} else {
 		a.Index--
 	}
-	if a.Index >= int64(len(vs)) {
-		return ""
+	if a.Index < 0 || a.Index >= int64(len(vs)) {
+		return "", ErrRange
 	}
 	v := vs[a.Index]
 	if a.Transform != nil {
 		v = a.Transform(v)
 	}
-	return v
+	return v, nil
 }
 
 func (a Arg) IsLiteral() bool {
@@ -343,7 +358,11 @@ func (r *Runner) Run(args []string) error {
 
 func (r *Runner) runDry() error {
 	for vs := r.source.Next(); vs != nil; vs = r.source.Next() {
-		fmt.Println(r.builder.Dump(vs))
+		cmd, err := r.builder.Dump(vs)
+		if err != nil {
+			return err
+		}
+		fmt.Println(cmd)
 	}
 	return nil
 }
@@ -354,7 +373,10 @@ func (r *Runner) run(stdout, stderr io.Writer) error {
 		sema  = make(chan struct{}, r.Jobs)
 	)
 	for vs := r.source.Next(); vs != nil; vs = r.source.Next() {
-		c := r.builder.Build(vs, r.Env, r.Shell)
+		c, err := r.builder.Build(vs, r.Env, r.Shell)
+		if err != nil {
+			return err
+		}
 		if r.Delay > 0 {
 			time.Sleep(r.Delay)
 		}
