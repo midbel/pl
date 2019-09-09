@@ -14,17 +14,14 @@ import (
 var dummy = struct{}{}
 
 type Runner struct {
-	Delay     time.Duration
-	Timeout   time.Duration
-	Repeat    int
-	Retries   int
-	Jobs      int
-	Env       bool
-	Quiet     bool
-	Dry       bool
-	Shell     bool
-	Shuffle   bool
-	KeepEmpty bool
+	Delay   time.Duration
+	Retries int
+	Jobs    int
+	Env     bool
+	Quiet   bool
+	Dry     bool
+	Shell   bool
+	Shuffle bool
 
 	builder *Builder
 	source  Source
@@ -48,20 +45,7 @@ func (r *Runner) Run(args []string) error {
 	if r.Retries <= 0 {
 		r.Retries = 1
 	}
-	if r.Repeat <= 0 || r.Dry {
-		r.Repeat = 1
-	}
-	for i := 0; i < r.Repeat; i++ {
-		if err := r.run(stdout, stderr); err != nil {
-			return err
-		}
-		if c, ok := r.source.(*Combination); ok && !r.Dry {
-			c.Reset()
-		} else {
-			break
-		}
-	}
-	return nil
+	return r.run(stdout, stderr)
 }
 
 func (r *Runner) runDry() error {
@@ -88,6 +72,7 @@ func (r *Runner) run(stdout, stderr io.Writer) error {
 		if r.Delay > 0 {
 			time.Sleep(r.Delay)
 		}
+
 		sema <- dummy
 		group.Go(func() error {
 			defer func() { <-sema }()
