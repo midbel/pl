@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"math/rand"
-	"os"
 )
 
 const (
@@ -13,29 +11,6 @@ const (
 
 type Source interface {
 	Next() []string
-}
-
-type stdin struct {
-	scan  *bufio.Scanner
-	empty bool
-}
-
-func Stdin(empty bool) Source {
-	s := bufio.NewScanner(os.Stdin)
-	return &stdin{scan: s, empty: empty}
-}
-
-func (s *stdin) Next() []string {
-	if err := s.scan.Err(); err != nil || !s.scan.Scan() {
-		return nil
-	}
-	var vs []string
-
-	str := s.scan.Text()
-	if !s.empty && len(str) == 0 {
-		return s.Next()
-	}
-	return append(vs, str)
 }
 
 type Combination struct {

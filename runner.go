@@ -125,20 +125,19 @@ func (r *Runner) CombinedOutput() (io.Writer, io.Writer) {
 
 func (r *Runner) setupArgs(args []string) error {
 	parts, args := splitArgs(args)
+	if len(args) == 0 {
+		return fmt.Errorf("no arguments given")
+	}
 
 	if b, err := Build(parts); err != nil {
 		return err
 	} else {
 		r.builder = b
 	}
-	if len(args) > 0 {
-		if r.Shuffle {
-			r.source = Shuffle(args)
-		} else {
-			r.source = Combine(args)
-		}
+	if r.Shuffle {
+		r.source = Shuffle(args)
 	} else {
-		r.source = Stdin(r.KeepEmpty)
+		r.source = Combine(args)
 	}
 	return nil
 }
