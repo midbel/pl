@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/midbel/pl"
 )
 
 func main() {
-	var r Runner
+	var r pl.Runner
 
 	flag.DurationVar(&r.Delay, "delay", 0, "delay")
 	flag.DurationVar(&r.Timeout, "timeout", 0, "timeout")
