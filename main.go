@@ -6,10 +6,6 @@ import (
 	"os"
 )
 
-const defaultShell = "/bin/sh"
-
-var dummy = struct{}{}
-
 func main() {
 	var r Runner
 

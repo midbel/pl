@@ -5,13 +5,13 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"runtime"
-	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 )
+
+var dummy = struct{}{}
 
 type Runner struct {
 	Delay     time.Duration
@@ -125,7 +125,12 @@ func (r *Runner) CombinedOutput() (io.Writer, io.Writer) {
 
 func (r *Runner) setupArgs(args []string) error {
 	parts, args := splitArgs(args)
-	r.builder = Build(parts)
+
+	if b, err := Build(parts); err != nil {
+		return err
+	} else {
+		r.builder = b
+	}
 	if len(args) > 0 {
 		if r.Shuffle {
 			r.source = Shuffle(args)
@@ -145,17 +150,4 @@ func splitArgs(args []string) ([]string, []string) {
 		}
 	}
 	return args, nil
-}
-
-func shellCommand(name string, args []string) *exec.Cmd {
-	shell, ok := os.LookupEnv("SHELL")
-	if !ok || shell == "" {
-		shell = defaultShell
-	}
-	cmd := fmt.Sprintf("%s %s", name, strings.Join(args, " "))
-	return exec.Command(shell, "-c", cmd)
-}
-
-func subCommand(name string, args []string) *exec.Cmd {
-	return exec.Command(name, args...)
 }

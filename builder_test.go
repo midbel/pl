@@ -35,24 +35,12 @@ func TestBuilderDump(t *testing.T) {
 			Want: "cmd -k FOO Bar",
 			Args: []string{"foo", "bar"},
 		},
-		{
-			Cmd:  "cmd -k {:upper} {:title}",
-			Want: "cmd -k FOO Bar",
-			Args: []string{"foo", "bar"},
-		},
-		{
-			Cmd:  "cmd -k {} {}",
-			Want: "cmd -k foo bar",
-			Args: []string{"foo", "bar"},
-		},
-		{
-			Cmd:  "cmd -k",
-			Want: "cmd -k foo bar",
-			Args: []string{"foo", "bar"},
-		},
 	}
 	for i, d := range data {
-		b := Build(splitCommand(d.Cmd))
+		b, err := Build(splitCommand(d.Cmd))
+		if err != nil {
+			t.Errorf("%d) builder failed: %s", i+1, err)
+		}
 		str, err := b.Dump(d.Args)
 		if err != nil {
 			t.Errorf("%d) unexpected error (%s): %s", i+1, d.Want, err)
