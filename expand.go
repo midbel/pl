@@ -187,7 +187,7 @@ func transform(str string) (func(string) string, error) {
 		fn = strings.Title
 	case "trim":
 		fn = strings.TrimSpace
-	case "random":
+	case "random", "rand":
 		fn = randomize
 	case "length", "len":
 		fn = length
