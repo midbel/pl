@@ -12,9 +12,11 @@ func main() {
 	var sh pl.Shell
 
 	flag.BoolVar(&sh.Dry, "dry", false, "dry-run")
+	flag.BoolVar(&sh.Verbose, "verbose", false, "verbose")
 	flag.BoolVar(&sh.Shuffle, "shuffle", false, "shuffle arguments")
 	flag.DurationVar(&sh.Delay, "delay", 0, "delay")
 	flag.IntVar(&sh.Jobs, "jobs", 0, "jobs")
+	flag.IntVar(&sh.Retries, "retries", 0, "retries")
 	flag.Parse()
 
 	if err := sh.Run(flag.Args()); err != nil {

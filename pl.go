@@ -2,10 +2,13 @@ package pl
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/midbel/combine"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -14,12 +17,21 @@ const (
 
 type Shell struct {
 	Dry     bool
+	Verbose bool
 	Shuffle bool
 	Jobs    int
+	Retries int
 	Delay   time.Duration
+	Working string
 }
 
 func (s Shell) Run(args []string) error {
+	if len(args) <= 1 {
+		return fmt.Errorf("not enough arguments given")
+	}
+	if args[0] == ":::" {
+		return s.runCommands(args[1:])
+	}
 	var run func(Expander, combine.Source) error
 	if s.Dry {
 		run = s.runDry
@@ -33,50 +45,79 @@ func (s Shell) Run(args []string) error {
 	return err
 }
 
-func (s Shell) runShell(ex Expander, src combine.Source) error {
+func (s Shell) runDry(ex Expander, src combine.Source) error {
+	for args := range combineArgs(ex, src) {
+		fmt.Println(strings.Join(args, " "))
+	}
+	return nil
+}
+
+func (s Shell) runCommands(args []string) error {
 	if s.Jobs <= 0 {
 		s.Jobs = DefaultMaxJobs
 	}
 	var (
-		group errgroup.Group
 		sema  = make(chan struct{}, s.Jobs)
+		group errgroup.Group
 	)
 	defer close(sema)
-	for !src.Done() {
-		sema <- struct{}{}
 
-		time.Sleep(s.Delay)
-		args, err := src.Next()
-		if err != nil {
-			return err
-		}
-		args, err = ex.Expand(args)
-		if err != nil {
-			return err
+	for _, a := range args {
+		sema <- struct{}{}
+		var (
+			as  = strings.Split(a, " ")
+			cmd = as[0]
+		)
+		if len(as) > 1 {
+			as = as[1:]
+		} else {
+			as = as[:0]
 		}
 		group.Go(func() error {
 			defer func() {
 				<-sema
 			}()
-			return nil
+			time.Sleep(s.Delay)
+			c := exec.Command(cmd, as...)
+			c.Stdout = os.Stdout
+			c.Stderr = os.Stderr
+			
+			if s.Verbose {
+				fmt.Println(strings.Join(c.Args, " "))
+			}
+			return c.Run()
 		})
 	}
 	return group.Wait()
 }
 
-func (s Shell) runDry(ex Expander, src combine.Source) error {
-	for !src.Done() {
-		args, err := src.Next()
-		if err != nil {
-			return err
-		}
-		args, err = ex.Expand(args)
-		if err != nil {
-			return err
-		}
-		fmt.Println(strings.Join(args, " "))
+func (s Shell) runShell(ex Expander, src combine.Source) error {
+	if s.Jobs <= 0 {
+		s.Jobs = DefaultMaxJobs
+	}
+	for args := range combineArgs(ex, src) {
+		_ = args
 	}
 	return nil
+}
+
+func combineArgs(ex Expander, src combine.Source) <-chan []string {
+	queue := make(chan []string)
+	go func() {
+		defer close(queue)
+		for !src.Done() {
+			args, err := src.Next()
+			if err != nil {
+				return
+			}
+			args, err = ex.Expand(args)
+			if err != nil {
+				continue
+			}
+			queue <- args
+		}
+	}()
+	return queue
 }
 
 func splitArgs(args []string, shuffle bool) (Expander, combine.Source, error) {
