@@ -52,6 +52,35 @@ func (s Shell) runDry(ex Expander, src combine.Source) error {
 	return nil
 }
 
+func (s Shell) runShell(ex Expander, src combine.Source) error {
+	if s.Jobs <= 0 {
+		s.Jobs = DefaultMaxJobs
+	}
+	var (
+		sema  = make(chan struct{}, s.Jobs)
+		group errgroup.Group
+	)
+	defer close(sema)
+
+	for args := range combineArgs(ex, src) {
+		c, err := prepare(args)
+		if err != nil {
+			return err
+		}
+		sema <- struct{}{}
+		group.Go(func() error {
+			defer func() {
+				<-sema
+			}()
+			if s.Verbose {
+				fmt.Println(strings.Join(c.Args, " "))
+			}
+			return c.Run()
+		})
+	}
+	return group.Wait()
+}
+
 func (s Shell) runCommands(args []string) error {
 	if s.Jobs <= 0 {
 		s.Jobs = DefaultMaxJobs
@@ -63,25 +92,16 @@ func (s Shell) runCommands(args []string) error {
 	defer close(sema)
 
 	for _, a := range args {
-		sema <- struct{}{}
-		var (
-			as  = strings.Split(a, " ")
-			cmd = as[0]
-		)
-		if len(as) > 1 {
-			as = as[1:]
-		} else {
-			as = as[:0]
+		c, err := prepare(strings.Split(a, " "))
+		if err != nil {
+			return err
 		}
+		sema <- struct{}{}
 		group.Go(func() error {
 			defer func() {
 				<-sema
 			}()
 			time.Sleep(s.Delay)
-			c := exec.Command(cmd, as...)
-			c.Stdout = os.Stdout
-			c.Stderr = os.Stderr
-			
 			if s.Verbose {
 				fmt.Println(strings.Join(c.Args, " "))
 			}
@@ -91,14 +111,14 @@ func (s Shell) runCommands(args []string) error {
 	return group.Wait()
 }
 
-func (s Shell) runShell(ex Expander, src combine.Source) error {
-	if s.Jobs <= 0 {
-		s.Jobs = DefaultMaxJobs
+func prepare(args []string) (*exec.Cmd, error) {
+	if len(args) == 0 {
+		return nil, fmt.Errorf("no arguments given")
 	}
-	for args := range combineArgs(ex, src) {
-		_ = args
-	}
-	return nil
+	c := exec.Command(args[0], args[1:]...)
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	return c, nil
 }
 
 func combineArgs(ex Expander, src combine.Source) <-chan []string {
