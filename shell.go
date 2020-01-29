@@ -108,13 +108,14 @@ func (s *Shell) executeCommand(args []string, ctx context.Context) error {
 		if s.Timeout > 0 {
 			ctx, cancel = context.WithTimeout(ctx, s.Timeout)
 		}
+		cancel = wrapCancel(cancel)
+
 		c, err := s.prepare(args, wc, ctx)
 		if err != nil {
-			if cancel != nil {
-				cancel()
-			}
+			cancel()
 			return err
 		}
+
 		if s.Verbose && i == 0 {
 			fmt.Println(strings.Join(c.Args, " "))
 		}
@@ -154,9 +155,8 @@ func (s *Shell) dump(rc *os.File) {
 }
 
 func (s *Shell) runAndDump(c *exec.Cmd, rc *os.File, cancel context.CancelFunc) error {
-	if cancel != nil {
-		defer cancel()
-	}
+	defer cancel()
+
 	err := c.Run()
 	if rc != nil {
 		s.dump(rc)
@@ -250,6 +250,13 @@ func splitMultiple(args []string) ([]Expander, []string, error) {
 		i++
 	}
 	return es, args[i:], nil
+}
+
+func wrapCancel(fn context.CancelFunc) context.CancelFunc {
+	if fn == nil {
+		return func() {}
+	}
+	return fn
 }
 
 func splitSingle(args []string) ([]Expander, []string, error) {
