@@ -10,9 +10,32 @@ func TestWords(t *testing.T) {
 		Input string
 		Words []string
 	}{
-		{Input: "one", Words: []string{"one"}},
-		{Input: "one two three", Words: []string{"one", "two", "three"}},
-		{Input: "one \"two two\" three", Words: []string{"one", "two two", "three"}},
+		{
+			Input: `one`,
+			Words: []string{"one"},
+		},
+		{
+			Input: `one two three`,
+			Words: []string{"one", "two", "three"}},
+		{
+			Input: `one "two two" three`,
+			Words: []string{"one", "two two", "three"}},
+		{
+			Input: `"one"`,
+			Words: []string{"one"},
+		},
+		{
+			Input: `one" string with "space`,
+			Words: []string{"one string with space"},
+		},
+		{
+			Input: `one" string with space" "another string"`,
+			Words: []string{"one string with space", "another string"},
+		},
+		{
+			Input: `one "\"two\"" three`,
+			Words: []string{"one", "\\\"two\\\"", "three"},
+		},
 	}
 	for i, d := range data {
 		ws, err := Words(d.Input)
@@ -28,7 +51,7 @@ func TestWords(t *testing.T) {
 
 func cmpWords(want, got []string) error {
 	if len(got) != len(want) {
-		return fmt.Errorf("number of words mismatched! want %d, got %d", len(want), len(got))
+		return fmt.Errorf("number of words mismatched! want %d, got %d (%q)", len(want), len(got), got)
 	}
 	for i := 0; i < len(want); i++ {
 		if want[i] != got[i] {

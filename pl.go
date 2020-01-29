@@ -253,7 +253,11 @@ func splitArgs(args []string, shuffle bool) ([]Expander, combine.Source, error) 
 			if combine.IsDelimiter(args[i]) {
 				break
 			}
-			e, err := Parse(strings.Split(args[i], " "))
+			ws, err := Words(args[i])
+			if err != nil {
+				return nil, nil, err
+			}
+			e, err := Parse(ws)
 			if err != nil {
 				return nil, nil, err
 			}

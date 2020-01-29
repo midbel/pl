@@ -6,9 +6,11 @@ import (
 )
 
 const (
-	space  = ' '
-	squote = '\''
-	dquote = '"'
+	space     = ' '
+	squote    = '\''
+	dquote    = '"'
+	backslash = '\\'
+	newline   = '\n'
 )
 
 func Words(str string) ([]string, error) {
@@ -33,15 +35,21 @@ func Words(str string) ([]string, error) {
 			}
 		case squote:
 		case dquote:
+			var prev rune
 			for {
 				r, _, err := rs.ReadRune()
 				if err != nil {
 					return nil, err
 				}
-				if r == dquote {
+				if r == dquote && prev != backslash {
 					break
 				}
 				ws.WriteRune(r)
+				prev = r
+			}
+			if r, _, _ := rs.ReadRune(); r != space {
+				rs.UnreadRune()
+				break
 			}
 			if ws.Len() > 0 {
 				xs = append(xs, ws.String())
