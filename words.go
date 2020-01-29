@@ -34,6 +34,20 @@ func Words(str string) ([]string, error) {
 				ws.Reset()
 			}
 		case squote:
+      for {
+        r, _, err := rs.ReadRune()
+				if err != nil {
+					return nil, err
+				}
+        if r == squote {
+          break
+        }
+        ws.WriteRune(r)
+      }
+      if ws.Len() > 0 {
+				xs = append(xs, ws.String())
+				ws.Reset()
+			}
 		case dquote:
 			var prev rune
 			for {

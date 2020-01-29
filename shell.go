@@ -18,7 +18,7 @@ import (
 
 const (
 	DefaultMaxJobs    = 256
-	DefaultMaxRetries = 256
+	DefaultMaxRetries = 1
 )
 
 type Shell struct {
@@ -29,6 +29,8 @@ type Shell struct {
 	Shuffle bool
 	Jobs    int
 	Retries int
+
+	Timeout time.Duration
 	Delay   time.Duration
 
 	TempDir string
@@ -79,13 +81,13 @@ func (s Shell) runShell(ex Expander, src Source) error {
 		}
 		go func(args []string) {
 			defer sema.Release(1)
-			s.executeCommand(args)
+			s.executeCommand(args, ctx)
 		}(args)
 	}
 	return sema.Acquire(ctx, int64(s.Jobs))
 }
 
-func (s Shell) executeCommand(args []string) error {
+func (s Shell) executeCommand(args []string, ctx context.Context) error {
 	if s.Dry {
 		fmt.Println(strings.Join(args, " "))
 		return nil
@@ -102,14 +104,18 @@ func (s Shell) executeCommand(args []string) error {
 			}
 			wc = w
 		}
-		c, err := s.prepare(args, wc)
+		var cancel context.CancelFunc
+		if s.Timeout > 0 {
+			ctx, cancel = context.WithTimeout(ctx, s.Timeout)
+		}
+		c, err := s.prepare(args, wc, ctx)
 		if err != nil {
 			return err
 		}
 		if s.Verbose && i == 0 {
 			fmt.Println(strings.Join(c.Args, " "))
 		}
-		if err = s.runAndDump(c, wc); err == nil {
+		if err = s.runAndDump(c, wc, cancel); err == nil {
 			break
 		}
 	}
@@ -144,7 +150,10 @@ func (s Shell) dump(rc *os.File) {
 	}
 }
 
-func (s Shell) runAndDump(c *exec.Cmd, rc *os.File) error {
+func (s Shell) runAndDump(c *exec.Cmd, rc *os.File, cancel context.CancelFunc) error {
+	if cancel != nil {
+		defer cancel()
+	}
 	err := c.Run()
 	if rc != nil {
 		s.dump(rc)
@@ -153,11 +162,11 @@ func (s Shell) runAndDump(c *exec.Cmd, rc *os.File) error {
 	return err
 }
 
-func (s Shell) prepare(args []string, w *os.File) (*exec.Cmd, error) {
+func (s Shell) prepare(args []string, w *os.File, ctx context.Context) (*exec.Cmd, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf("no arguments given")
 	}
-	c := exec.Command(args[0], args[1:]...)
+	c := exec.CommandContext(ctx, args[0], args[1:]...)
 	c.Dir = s.WorkDir
 	if w == nil {
 		c.Stdout = os.Stdout
