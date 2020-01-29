@@ -13,7 +13,7 @@ type Expander interface {
 	Expand([]string) ([]string, error)
 }
 
-func Parse(args []string) (Expander, error) {
+func NewExpander(args []string) (Expander, error) {
 	es := make([]Expander, 0, len(args))
 	for _, a := range args {
 		e, err := parseArgument(a)

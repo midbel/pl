@@ -8,11 +8,11 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/midbel/combine"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -59,16 +59,24 @@ func (s Shell) Run(args []string) error {
 		if err = s.runShell(e, src); err != nil {
 			break
 		}
-		src.Reset()
+		if src != nil {
+			src.Reset()
+		}
 	}
 	return err
 }
 
-func (s Shell) runShell(ex Expander, src combine.Source) error {
-	var (
-		sema = semaphore.NewWeighted(int64(s.Jobs))
-		ctx  = context.TODO()
-	)
+func (s Shell) runShell(ex Expander, src Source) error {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Kill, os.Interrupt)
+	go func() {
+		<-sig
+		cancel()
+	}()
+
+	sema := semaphore.NewWeighted(int64(s.Jobs))
 	for args := range combineArgs(ex, src) {
 		if err := sema.Acquire(ctx, 1); err != nil {
 			return err
@@ -77,23 +85,6 @@ func (s Shell) runShell(ex Expander, src combine.Source) error {
 			defer sema.Release(1)
 			s.executeCommand(args)
 		}(args)
-	}
-	return sema.Acquire(ctx, int64(s.Jobs))
-}
-
-func (s Shell) runCommands(args []string) error {
-	var (
-		sema = semaphore.NewWeighted(int64(s.Jobs))
-		ctx  = context.TODO()
-	)
-	for _, a := range args {
-		if err := sema.Acquire(ctx, 1); err != nil {
-			return err
-		}
-		go func(args []string) {
-			defer sema.Release(1)
-			s.executeCommand(args)
-		}(strings.Split(a, " "))
 	}
 	return sema.Acquire(ctx, int64(s.Jobs))
 }
@@ -223,10 +214,17 @@ func (w writer) Write(xs []byte) (int, error) {
 	return len(xs), err
 }
 
-func combineArgs(ex Expander, src combine.Source) <-chan []string {
+func combineArgs(ex Expander, src Source) <-chan []string {
 	queue := make(chan []string)
 	go func() {
 		defer close(queue)
+		if src == nil {
+			args, err := ex.Expand(nil)
+			if err == nil {
+				queue <- args
+			}
+			return
+		}
 		for !src.Done() {
 			args, err := src.Next()
 			if err != nil {
@@ -242,43 +240,65 @@ func combineArgs(ex Expander, src combine.Source) <-chan []string {
 	return queue
 }
 
-func splitArgs(args []string, shuffle bool) ([]Expander, combine.Source, error) {
+func splitArgs(args []string, shuffle bool) ([]Expander, Source, error) {
+	var (
+		src Source
+		es  []Expander
+		err error
+	)
+	if IsDelimiter(args[0]) {
+		es, args, err = splitMultiple(args[1:])
+	} else {
+		es, args, err = splitSingle(args)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(args) > 0 {
+		src, err = Parse(args)
+	}
+	return es, src, err
+}
+
+func splitMultiple(args []string) ([]Expander, []string, error) {
 	var (
 		i  int
-		es []Expander
-	)
-	if combine.IsDelimiter(args[0]) {
 		es = make([]Expander, 0, 10)
-		for i = 1; i < len(args); i++ {
-			if combine.IsDelimiter(args[i]) {
-				break
-			}
-			ws, err := Words(args[i])
-			if err != nil {
-				return nil, nil, err
-			}
-			e, err := Parse(ws)
-			if err != nil {
-				return nil, nil, err
-			}
-			es = append(es, e)
+	)
+	for i = 0; i < len(args); i++ {
+		if IsDelimiter(args[i]) {
+			break
 		}
-	} else {
-		for i < len(args) {
-			if combine.IsDelimiter(args[i]) {
-				break
-			}
-			i++
-		}
-		if i >= len(args) {
-			return nil, nil, fmt.Errorf("delimiter not found")
-		}
-		e, err := Parse(args[:i])
+		ws, err := Words(args[i])
 		if err != nil {
 			return nil, nil, err
 		}
-		es = []Expander{e}
+		e, err := NewExpander(ws)
+		if err != nil {
+			return nil, nil, err
+		}
+		es = append(es, e)
 	}
-	s, err := combine.Parse(args[i+1:])
-	return es, s, err
+	if i < len(args) {
+		i++
+	}
+	return es, args[i:], nil
+}
+
+func splitSingle(args []string) ([]Expander, []string, error) {
+	var i int
+	for i < len(args) {
+		if IsDelimiter(args[i]) {
+			break
+		}
+		i++
+	}
+	if i >= len(args) {
+		return nil, nil, fmt.Errorf("delimiter not found")
+	}
+	e, err := NewExpander(args[:i])
+	if err != nil {
+		return nil, nil, err
+	}
+	return []Expander{e}, args[i+1:], nil
 }
