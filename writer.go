@@ -19,20 +19,20 @@ type writer struct {
 }
 
 func stdout(w io.Writer) io.Writer {
-	return writer{
+	return &writer{
 		prefix: prefixOut,
 		inner:  w,
 	}
 }
 
 func stderr(w io.Writer) io.Writer {
-	return writer{
+	return &writer{
 		prefix: prefixErr,
 		inner:  w,
 	}
 }
 
-func (w writer) Write(xs []byte) (int, error) {
+func (w *writer) Write(xs []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 

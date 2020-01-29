@@ -39,7 +39,7 @@ type Shell struct {
 	mu sync.Mutex
 }
 
-func (s Shell) Run(args []string) error {
+func (s *Shell) Run(args []string) error {
 	if len(args) <= 1 {
 		return fmt.Errorf("not enough arguments given")
 	}
@@ -64,7 +64,7 @@ func (s Shell) Run(args []string) error {
 	return err
 }
 
-func (s Shell) runShell(ex Expander, src Source) error {
+func (s *Shell) runShell(ex Expander, src Source) error {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sig := make(chan os.Signal, 1)
@@ -87,7 +87,7 @@ func (s Shell) runShell(ex Expander, src Source) error {
 	return sema.Acquire(ctx, int64(s.Jobs))
 }
 
-func (s Shell) executeCommand(args []string, ctx context.Context) error {
+func (s *Shell) executeCommand(args []string, ctx context.Context) error {
 	if s.Dry {
 		fmt.Println(strings.Join(args, " "))
 		return nil
@@ -110,6 +110,9 @@ func (s Shell) executeCommand(args []string, ctx context.Context) error {
 		}
 		c, err := s.prepare(args, wc, ctx)
 		if err != nil {
+			if cancel != nil {
+				cancel()
+			}
 			return err
 		}
 		if s.Verbose && i == 0 {
@@ -122,7 +125,7 @@ func (s Shell) executeCommand(args []string, ctx context.Context) error {
 	return err
 }
 
-func (s Shell) dump(rc *os.File) {
+func (s *Shell) dump(rc *os.File) {
 	defer rc.Close()
 	if _, err := rc.Seek(0, io.SeekStart); err != nil {
 		return
@@ -150,7 +153,7 @@ func (s Shell) dump(rc *os.File) {
 	}
 }
 
-func (s Shell) runAndDump(c *exec.Cmd, rc *os.File, cancel context.CancelFunc) error {
+func (s *Shell) runAndDump(c *exec.Cmd, rc *os.File, cancel context.CancelFunc) error {
 	if cancel != nil {
 		defer cancel()
 	}
@@ -162,7 +165,7 @@ func (s Shell) runAndDump(c *exec.Cmd, rc *os.File, cancel context.CancelFunc) e
 	return err
 }
 
-func (s Shell) prepare(args []string, w *os.File, ctx context.Context) (*exec.Cmd, error) {
+func (s *Shell) prepare(args []string, w *os.File, ctx context.Context) (*exec.Cmd, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf("no arguments given")
 	}

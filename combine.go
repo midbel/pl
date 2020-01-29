@@ -11,6 +11,7 @@ type Source interface {
 	Next() ([]string, error)
 	Done() bool
 	Reset()
+	Len() int
 }
 
 type single struct {
@@ -45,6 +46,10 @@ func (s *single) Done() bool {
 
 func (s *single) Reset() {
 	s.index = -1
+}
+
+func (s *single) Len() int {
+	return len(s.values)
 }
 
 type link struct {
@@ -90,6 +95,14 @@ func (l *link) Done() bool {
 func (l *link) Reset() {
 	l.left.Reset()
 	l.right.Reset()
+}
+
+func (l *link) Len() int {
+	left, right := l.left.Len(), l.right.Len()
+	if left < right {
+		return left
+	}
+	return right
 }
 
 type combination struct {
@@ -139,6 +152,10 @@ func (c *combination) Done() bool {
 func (c *combination) Reset() {
 	c.left.Reset()
 	c.right.Reset()
+}
+
+func (c *combination) Len() int {
+	return c.left.Len() * c.right.Len()
 }
 
 const (
