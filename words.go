@@ -29,30 +29,16 @@ func Words(str string) ([]string, error) {
 		}
 		switch r {
 		case space:
-			if ws.Len() > 0 {
-				xs = append(xs, ws.String())
-				ws.Reset()
-			}
+			xs = append(xs, ws.String())
+			ws.Reset()
 		case squote:
-      if err := quoteStrong(rs, &ws); err != nil {
-        return nil, err
-      }
-      if r, _, _ := rs.ReadRune(); r != space {
-				rs.UnreadRune()
-				break
+			if err := quoteStrong(rs, &ws); err != nil {
+				return nil, err
 			}
-      xs = append(xs, ws.String())
-      ws.Reset()
 		case dquote:
-      if err := quoteWeak(rs, &ws); err != nil {
-        return nil, err
-      }
-			if r, _, _ := rs.ReadRune(); r != space {
-				rs.UnreadRune()
-				break
+			if err := quoteWeak(rs, &ws); err != nil {
+				return nil, err
 			}
-      xs = append(xs, ws.String())
-      ws.Reset()
 		default:
 			ws.WriteRune(r)
 		}
@@ -61,29 +47,29 @@ func Words(str string) ([]string, error) {
 }
 
 func quoteWeak(rs *bytes.Reader, ws *bytes.Buffer) error {
-  var prev rune
-  for {
-    r, _, err := rs.ReadRune()
-    if err != nil {
-      return err
-    }
-    if r == dquote && prev != backslash {
-      return nil
-    }
-    ws.WriteRune(r)
-    prev = r
-  }
+	var prev rune
+	for {
+		r, _, err := rs.ReadRune()
+		if err != nil {
+			return err
+		}
+		if r == dquote && prev != backslash {
+			return nil
+		}
+		ws.WriteRune(r)
+		prev = r
+	}
 }
 
 func quoteStrong(rs *bytes.Reader, ws *bytes.Buffer) error {
-  for {
-    r, _, err := rs.ReadRune()
-    if err != nil {
-      return err
-    }
-    if r == squote {
-      return nil
-    }
-    ws.WriteRune(r)
-  }
+	for {
+		r, _, err := rs.ReadRune()
+		if err != nil {
+			return err
+		}
+		if r == squote {
+			return nil
+		}
+		ws.WriteRune(r)
+	}
 }
