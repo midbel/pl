@@ -36,6 +36,10 @@ func TestWords(t *testing.T) {
 			Input: `one "\"two\"" three`,
 			Words: []string{"one", "\\\"two\\\"", "three"},
 		},
+    {
+      Input: `"" ''`,
+      Words: []string{"", ""},
+    },
 	}
 	for i, d := range data {
 		ws, err := Words(d.Input)
