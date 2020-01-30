@@ -7,10 +7,16 @@ import (
 
 const (
 	space     = ' '
+	tab       = '\t'
 	squote    = '\''
 	dquote    = '"'
 	backslash = '\\'
+	dollar    = '$'
 	newline   = '\n'
+	lparen    = '('
+	rparen    = ')'
+	lcurly    = '{'
+	rcurly    = '}'
 )
 
 func Words(str string) ([]string, error) {
@@ -28,7 +34,7 @@ func Words(str string) ([]string, error) {
 			return nil, err
 		}
 		switch r {
-		case space:
+		case space, tab:
 			xs = append(xs, ws.String())
 			ws.Reset()
 		case squote:
@@ -39,6 +45,8 @@ func Words(str string) ([]string, error) {
 			if err := quoteWeak(rs, &ws); err != nil {
 				return nil, err
 			}
+		case backslash:
+		case dollar:
 		default:
 			ws.WriteRune(r)
 		}

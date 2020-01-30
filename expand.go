@@ -108,7 +108,7 @@ func parsePlaceholder(str string) (Expander, int, error) {
 		offset int
 		arg    argument
 	)
-	offset = advanceUntil(str, offset, ':', '}')
+	offset = advanceUntil(str, offset, ':', '}', '#', '%')
 	if n, err := strconv.ParseInt(str[:offset], 10, 64); err != nil {
 		return nil, 0, err
 	} else {
@@ -228,10 +228,10 @@ func length(str string) string {
 	return strconv.FormatInt(int64(n), 10)
 }
 
-func isDigit(b byte) bool {
-	return b >= '0' && b <= '9'
-}
-
-func isLetter(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
-}
+// func isDigit(b byte) bool {
+// 	return b >= '0' && b <= '9'
+// }
+//
+// func isLetter(b byte) bool {
+// 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+// }
