@@ -2,10 +2,12 @@ package pl
 
 import (
 	"fmt"
+	"os"
 	"testing"
 )
 
-func TestWords(t *testing.T) {
+func TestSplit(t *testing.T) {
+	os.Setenv("TEST", "SPLIT")
 	data := []struct {
 		Input string
 		Words []string
@@ -37,12 +39,20 @@ func TestWords(t *testing.T) {
 			Words: []string{"one", "\\\"two\\\"", "three"},
 		},
 		{
-			Input: `"" ''`,
+			Input: `""    ''`,
 			Words: []string{"", ""},
+		},
+		{
+			Input: `$FOO ${FOO}`,
+			Words: []string{"", ""},
+		},
+		{
+			Input: `$TEST "${TEST}"`,
+			Words: []string{"SPLIT", "SPLIT"},
 		},
 	}
 	for i, d := range data {
-		ws, err := Words(d.Input)
+		ws, err := Split(d.Input)
 		if err != nil {
 			t.Errorf("%d) fail %s: %s", i+1, d.Input, err)
 			continue
@@ -55,11 +65,11 @@ func TestWords(t *testing.T) {
 
 func cmpWords(want, got []string) error {
 	if len(got) != len(want) {
-		return fmt.Errorf("number of words mismatched! want %d, got %d (%q)", len(want), len(got), got)
+		return fmt.Errorf("length mismatched! want %d, got %d (%q)", len(want), len(got), got)
 	}
 	for i := 0; i < len(want); i++ {
 		if want[i] != got[i] {
-			return fmt.Errorf("word mismatched at %d! want %s, got %s", i, want[i], got[i])
+			return fmt.Errorf("words mismatched at %d! want %s, got %s", i, want[i], got[i])
 		}
 	}
 	return nil

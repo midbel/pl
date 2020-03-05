@@ -2,7 +2,9 @@ package pl
 
 import (
 	"bytes"
+	"errors"
 	"io"
+	"os"
 )
 
 const (
@@ -12,14 +14,9 @@ const (
 	dquote    = '"'
 	backslash = '\\'
 	dollar    = '$'
-	newline   = '\n'
-	lparen    = '('
-	rparen    = ')'
-	lcurly    = '{'
-	rcurly    = '}'
 )
 
-func Words(str string) ([]string, error) {
+func Split(str string) ([]string, error) {
 	var (
 		xs []string
 		ws bytes.Buffer
@@ -28,7 +25,7 @@ func Words(str string) ([]string, error) {
 	for {
 		r, _, err := rs.ReadRune()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return nil, err
@@ -37,16 +34,19 @@ func Words(str string) ([]string, error) {
 		case space, tab:
 			xs = append(xs, ws.String())
 			ws.Reset()
+			skipBlanks(rs)
 		case squote:
-			if err := quoteStrong(rs, &ws); err != nil {
+			if err := scanStrong(rs, &ws); err != nil {
 				return nil, err
 			}
 		case dquote:
-			if err := quoteWeak(rs, &ws); err != nil {
+			if err := scanWeak(rs, &ws); err != nil {
 				return nil, err
 			}
 		case backslash:
 		case dollar:
+			str := scanVariable(rs)
+			ws.WriteString(str)
 		default:
 			ws.WriteRune(r)
 		}
@@ -54,7 +54,21 @@ func Words(str string) ([]string, error) {
 	return append(xs, ws.String()), nil
 }
 
-func quoteWeak(rs *bytes.Reader, ws *bytes.Buffer) error {
+func scanVariable(rs *bytes.Reader) string {
+	var buf bytes.Buffer
+	buf.WriteRune(dollar)
+	for {
+		k, _, err := rs.ReadRune()
+		if err != nil || k == space || k == tab || k == dquote {
+			rs.UnreadRune()
+			break
+		}
+		buf.WriteRune(k)
+	}
+	return os.ExpandEnv(buf.String())
+}
+
+func scanWeak(rs *bytes.Reader, ws *bytes.Buffer) error {
 	var prev rune
 	for {
 		r, _, err := rs.ReadRune()
@@ -64,12 +78,17 @@ func quoteWeak(rs *bytes.Reader, ws *bytes.Buffer) error {
 		if r == dquote && prev != backslash {
 			return nil
 		}
+		if r == dollar {
+			str := scanVariable(rs)
+			ws.WriteString(str)
+			continue
+		}
 		ws.WriteRune(r)
 		prev = r
 	}
 }
 
-func quoteStrong(rs *bytes.Reader, ws *bytes.Buffer) error {
+func scanStrong(rs *bytes.Reader, ws *bytes.Buffer) error {
 	for {
 		r, _, err := rs.ReadRune()
 		if err != nil {
@@ -79,5 +98,18 @@ func quoteStrong(rs *bytes.Reader, ws *bytes.Buffer) error {
 			return nil
 		}
 		ws.WriteRune(r)
+	}
+}
+
+func skipBlanks(rs *bytes.Reader) {
+	for {
+		k, _, err := rs.ReadRune()
+		if err != nil {
+			break
+		}
+		if k != space && k != tab {
+			rs.UnreadRune()
+			break
+		}
 	}
 }

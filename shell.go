@@ -54,7 +54,7 @@ func (s *Shell) Run(args []string) error {
 		return err
 	}
 	for _, e := range exs {
-		if err = s.runShell(e, src); err != nil {
+		if err = s.run(e, src); err != nil {
 			break
 		}
 		if src != nil {
@@ -64,7 +64,7 @@ func (s *Shell) Run(args []string) error {
 	return err
 }
 
-func (s *Shell) runShell(ex Expander, src Source) error {
+func (s *Shell) run(ex Expander, src Source) error {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sig := make(chan os.Signal, 1)
@@ -236,7 +236,7 @@ func splitMultiple(args []string) ([]Expander, []string, error) {
 		if IsDelimiter(args[i]) {
 			break
 		}
-		ws, err := Words(args[i])
+		ws, err := Split(args[i])
 		if err != nil {
 			return nil, nil, err
 		}
